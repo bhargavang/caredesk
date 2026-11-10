@@ -1,0 +1,19 @@
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.iml
+
+# Env files (keep the example)
+.env
+.env.*
+!.env.example
+
+# Backend
+backend/target/
+backend/data/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local

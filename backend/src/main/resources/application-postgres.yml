@@ -1,0 +1,14 @@
+# Postgres profile: run with SPRING_PROFILES_ACTIVE=postgres.
+# Works with a local Postgres, docker-compose, or a hosted one (Neon, Supabase, Render...).
+spring:
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/caredesk}
+    username: ${DATABASE_USERNAME:caredesk}
+    password: ${DATABASE_PASSWORD:caredesk}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+
+caredesk:
+  jwt:
+    # With a real database you may run several instances; they must all sign with the same key.
+    require-secret: true

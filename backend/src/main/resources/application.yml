@@ -1,0 +1,98 @@
+# Default profile: in-memory H2 with demo data, so the app runs with no setup.
+# Data resets on every restart. Use the "postgres" profile for a real database.
+spring:
+  application:
+    name: caredesk
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: jdbc:h2:mem:caredesk;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;LOCK_TIMEOUT=10000
+    username: sa
+    password: ""
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    locations: classpath:db/migration
+  mvc:
+    format:
+      date: iso
+      date-time: iso
+      time: iso
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+  # Set to "framework" only when running behind a proxy you trust (Render, Railway, nginx),
+  # so rate limits see the real client IP from X-Forwarded-For.
+  forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+
+springdoc:
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:true}
+  swagger-ui:
+    enabled: ${API_DOCS_ENABLED:true}
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+
+caredesk:
+  clinic:
+    name: Juniper Family Clinic
+    address: 14 Lakeview Road, Indiranagar, Bengaluru
+    phone: "+91 80 0000 0000"
+    timezone: Asia/Kolkata
+  booking:
+    block-minutes: 15
+    slot-step-minutes: 30
+    min-lead-minutes: 60
+    max-days-ahead: 60
+  jwt:
+    # Leave empty locally: a random key is generated at startup (logins reset on restart).
+    # Set JWT_SECRET (at least 32 characters) when you host it.
+    secret: ${JWT_SECRET:}
+    ttl: PT8H
+    require-secret: false
+    cookie-secure: ${COOKIE_SECURE:true}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  mail:
+    # "log" writes emails to the console and the email log table. "smtp" sends them for real.
+    mode: ${MAIL_MODE:log}
+    from: ${MAIL_FROM:Juniper Family Clinic <no-reply@caredesk.test>}
+  jobs:
+    enabled: true
+    confirmation-delay: PT30S
+    reminder-delay: PT1H
+    reminder-initial-delay: PT1M
+  rate-limit:
+    enabled: true
+    login-attempts: 10
+    login-window: PT5M
+    failed-logins-per-account: 5
+    bookings: 20
+    booking-window: PT1H
+    lookups: 120
+    lookup-window: PT10M
+  seed:
+    enabled: ${SEED_DEMO_DATA:true}
+    demo-email: demo@caredesk.test
+    demo-password: ${DEMO_PASSWORD:demo1234}
