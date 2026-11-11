@@ -39,6 +39,7 @@ public class TestData {
 				"service_offering", "app_user")) {
 			jdbc.update("delete from " + table);
 		}
+		jdbc.update("update demo_state set refreshed_on = null");
 	}
 
 	public ServiceOffering service(String name, int minutes) {

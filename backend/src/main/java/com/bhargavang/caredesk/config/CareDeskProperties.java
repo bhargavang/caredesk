@@ -4,6 +4,8 @@ import java.time.Duration;
 import java.time.ZoneId;
 import java.util.List;
 
+import com.bhargavang.caredesk.auth.Role;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -69,6 +71,12 @@ public record CareDeskProperties(
 	public record ClientIp(int trustedHops, String header, boolean debug) {
 	}
 
-	public record Seed(boolean enabled, String demoEmail, String demoPassword) {
+	/**
+	 * @param enabled    fill an empty database with the demo clinic
+	 * @param demoRole   role of the demo login; STAFF on a public demo, so visitors can't edit the catalogue
+	 * @param dailyReset regenerate the demo appointments once a day, so a long-running demo always has
+	 *                   bookings around today. Only for demos: it deletes every appointment.
+	 */
+	public record Seed(boolean enabled, String demoEmail, String demoPassword, Role demoRole, boolean dailyReset) {
 	}
 }

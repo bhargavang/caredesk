@@ -102,3 +102,7 @@ caredesk:
     enabled: ${SEED_DEMO_DATA:true}
     demo-email: demo@caredesk.test
     demo-password: ${DEMO_PASSWORD:demo1234}
+    # ADMIN can edit services and staff. A public demo should use STAFF.
+    demo-role: ${DEMO_ROLE:ADMIN}
+    # Demo only: wipe and regenerate the appointments once a day (at startup and 03:00 clinic time).
+    daily-reset: ${DEMO_DAILY_RESET:false}

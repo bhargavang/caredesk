@@ -67,7 +67,10 @@ public class AuthController {
 		String email = request.email().trim().toLowerCase(Locale.ROOT);
 		String accountKey = "login-failures:" + email;
 		CareDeskProperties.RateLimit limits = properties.rateLimit();
-		if (limits.enabled() && rateLimiter.isOverLimit(accountKey, limits.failedLoginsPerAccount(), limits.loginWindow())) {
+		// The demo password is printed on the login page, so locking that account protects nothing and
+		// would let one visitor lock everyone else out. The per-IP login limit still applies to it.
+		boolean lockable = limits.enabled() && !isPublicDemoAccount(email);
+		if (lockable && rateLimiter.isOverLimit(accountKey, limits.failedLoginsPerAccount(), limits.loginWindow())) {
 			throw new TooManyRequestsException("Too many failed logins for this account. Try again in a few minutes.",
 					limits.loginWindow().toSeconds());
 		}
@@ -75,7 +78,7 @@ public class AuthController {
 		AppUser user = users.findByEmailIgnoreCase(email).orElse(null);
 		boolean ok = passwordEncoder.matches(request.password(), user != null ? user.getPasswordHash() : dummyHash);
 		if (user == null || !ok) {
-			if (limits.enabled()) {
+			if (lockable) {
 				rateLimiter.record(accountKey, limits.loginWindow());
 			}
 			throw new BadCredentialsException("Bad credentials");
@@ -89,6 +92,11 @@ public class AuthController {
 						SessionCookie.create(token.value(), maxAge, properties.jwt().cookieSecure()).toString())
 				.body(new LoginResponse(new UserView(user.getEmail(), user.getDisplayName(), List.of(user.getRole().name())),
 						token.expiresAt(), token.value()));
+	}
+
+	private boolean isPublicDemoAccount(String email) {
+		CareDeskProperties.Seed seed = properties.seed();
+		return seed.enabled() && seed.demoEmail() != null && seed.demoEmail().equalsIgnoreCase(email);
 	}
 
 	@PostMapping("/api/auth/logout")

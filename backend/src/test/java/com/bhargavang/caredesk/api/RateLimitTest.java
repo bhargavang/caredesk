@@ -25,7 +25,8 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 		"caredesk.rate-limit.enabled=true",
 		"caredesk.rate-limit.login-attempts=3",
 		"caredesk.rate-limit.failed-logins-per-account=2",
-		"caredesk.rate-limit.bookings=2" })
+		"caredesk.rate-limit.bookings=2",
+		"caredesk.seed.enabled=true" })
 class RateLimitTest {
 
 	@Autowired
@@ -62,6 +63,21 @@ class RateLimitTest {
 		mvc.perform(login("10.0.1.3", "desk@clinic.test", TestData.PASSWORD))
 				.andExpect(status().isTooManyRequests())
 				.andExpect(jsonPath("$.title").value("Too many attempts"));
+	}
+
+	@Test
+	void thePublishedDemoLoginCantBeLockedButItsIpLimitStillApplies() throws Exception {
+		data.user("demo@caredesk.test", Role.STAFF);
+		for (int i = 0; i < 3; i++) {
+			mvc.perform(login("10.0.3." + i, "demo@caredesk.test", "wrong")).andExpect(status().isUnauthorized());
+		}
+		// Three failures would lock any other account; the demo one still lets the next visitor in.
+		mvc.perform(login("10.0.3.9", "demo@caredesk.test", TestData.PASSWORD)).andExpect(status().isOk());
+
+		for (int i = 0; i < 2; i++) {
+			mvc.perform(login("10.0.3.9", "demo@caredesk.test", "wrong")).andExpect(status().isUnauthorized());
+		}
+		mvc.perform(login("10.0.3.9", "demo@caredesk.test", TestData.PASSWORD)).andExpect(status().isTooManyRequests());
 	}
 
 	@Test

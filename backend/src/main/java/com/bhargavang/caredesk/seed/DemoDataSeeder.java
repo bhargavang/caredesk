@@ -39,6 +39,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,7 +47,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Fills an empty database with a fictional clinic: services, staff, working hours,
  * a demo login, and about a month of appointments around today, so the dashboard
- * and chart never look empty. Does nothing if services already exist.
+ * and chart never look empty. Does nothing if services already exist, unless the
+ * daily reset is on: then the appointments are regenerated once a day.
  */
 @Component
 @ConditionalOnProperty(name = "caredesk.seed.enabled", havingValue = "true")
@@ -72,10 +74,11 @@ public class DemoDataSeeder implements ApplicationRunner {
 	private final ReferenceGenerator references;
 	private final CareDeskProperties properties;
 	private final Clock clock;
+	private final JdbcTemplate jdbc;
 
 	public DemoDataSeeder(ServiceOfferingRepository services, StaffRepository staff, AppointmentRepository appointments,
 			AppUserRepository users, PasswordEncoder passwordEncoder, ReferenceGenerator references,
-			CareDeskProperties properties, Clock clock) {
+			CareDeskProperties properties, Clock clock, JdbcTemplate jdbc) {
 		this.services = services;
 		this.staff = staff;
 		this.appointments = appointments;
@@ -84,16 +87,55 @@ public class DemoDataSeeder implements ApplicationRunner {
 		this.references = references;
 		this.properties = properties;
 		this.clock = clock;
+		this.jdbc = jdbc;
 	}
 
 	@Override
 	@Transactional
 	public void run(ApplicationArguments args) {
-		if (services.count() > 0) {
-			log.info("Database already has data, skipping demo seed");
-			return;
-		}
+		seedOrRefresh();
+	}
 
+	/**
+	 * Seeds an empty database, or regenerates the appointments if the daily reset is on and they
+	 * were last made before today. Runs at startup and from {@link DemoResetJob}. The demo_state row
+	 * is locked first, so instances that start together take turns instead of seeding twice.
+	 *
+	 * @return whether anything was written
+	 */
+	@Transactional
+	public boolean seedOrRefresh() {
+		LocalDate today = LocalDate.now(clock);
+		LocalDate refreshedOn = jdbc.query("select refreshed_on from demo_state where id = 1 for update",
+				rs -> rs.next() ? rs.getObject(1, LocalDate.class) : null);
+
+		if (services.count() == 0) {
+			seedClinic();
+		}
+		else if (properties.seed().dailyReset() && (refreshedOn == null || refreshedOn.isBefore(today))) {
+			refreshAppointments();
+		}
+		else {
+			log.info("Database already has data, skipping demo seed");
+			return false;
+		}
+		jdbc.update("update demo_state set refreshed_on = ? where id = 1", today);
+		return true;
+	}
+
+	private void refreshAppointments() {
+		jdbc.update("delete from email_log");
+		jdbc.update("delete from booked_block");
+		jdbc.update("delete from appointment");
+		List<Staff> team = staff.findAll().stream()
+				.filter(Staff::isActive)
+				.sorted((a, b) -> a.getId().compareTo(b.getId()))
+				.toList();
+		int created = seedAppointments(team);
+		log.info("Refreshed the demo appointments around today: {} appointments", created);
+	}
+
+	private void seedClinic() {
 		ServiceOffering consult = service("General consultation",
 				"Fevers, coughs, check-ups, prescriptions and referrals.", 30, 600);
 		ServiceOffering child = service("Child health check",
@@ -134,8 +176,10 @@ public class DemoDataSeeder implements ApplicationRunner {
 
 		List<Staff> team = staff.saveAll(List.of(rao, mehta, nair, siddiqui, joseph));
 
-		users.save(new AppUser(properties.seed().demoEmail().toLowerCase(Locale.ROOT), "Demo Admin",
-				passwordEncoder.encode(properties.seed().demoPassword()), Role.ADMIN));
+		Role demoRole = properties.seed().demoRole() == null ? Role.ADMIN : properties.seed().demoRole();
+		users.save(new AppUser(properties.seed().demoEmail().toLowerCase(Locale.ROOT),
+				demoRole == Role.ADMIN ? "Demo Admin" : "Demo front desk",
+				passwordEncoder.encode(properties.seed().demoPassword()), demoRole));
 
 		int created = seedAppointments(team);
 		log.info("Seeded demo clinic: {} services, {} staff, {} appointments. Staff login: {}",
