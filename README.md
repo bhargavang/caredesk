@@ -139,7 +139,13 @@ On every push, GitHub Actions runs the tests on Java 21 with H2 and again on Pos
 
 ## Configuration
 
-All settings have local defaults. The ones you'd set when hosting are listed with comments in [`.env.example`](.env.example): database URL and credentials, `JWT_SECRET`, `CORS_ALLOWED_ORIGINS`, `FORWARD_HEADERS_STRATEGY` (set to `framework` behind a trusted proxy so rate limits see the real client IP), mail settings, and `SITE_URL` / `PRERENDER_API_URL` for the frontend build.
+All settings have local defaults. The ones you'd set when hosting are listed with comments in [`.env.example`](.env.example):
+
+- `DATABASE_URL`: either a `jdbc:postgresql://` URL with `DATABASE_USERNAME` and `DATABASE_PASSWORD`, or the `postgresql://user:password@host/db` string that Neon, Supabase or Render show you, pasted as it is.
+- `JWT_SECRET`, `CORS_ALLOWED_ORIGINS` and the mail settings.
+- `CLIENT_IP_TRUSTED_HOPS` / `CLIENT_IP_HEADER`: how rate limits find the visitor's IP behind proxies. Only entries added by proxies you trust are used, so a made-up `X-Forwarded-For` header doesn't get around the limits. `CLIENT_IP_DEBUG=true` turns on an endpoint that shows what your host's proxies send, to check these on a new host.
+- `DEMO_ROLE` and `DEMO_DAILY_RESET` for a public demo (front-desk login only, appointments regenerated every night).
+- `SITE_URL` / `PRERENDER_API_URL` for the frontend build.
 
 ## Project layout
 
@@ -159,9 +165,17 @@ docs/screenshots/            the images in this README
 docker-compose.yml
 ```
 
-## Hosting plan
+## Hosting
 
-Not deployed yet. The plan is the API on Render or Railway with `SPRING_PROFILES_ACTIVE=postgres`, a managed PostgreSQL database with automatic backups (Neon or Supabase), and the website on Vercel or Netlify with `/api` forwarded to the API so the login cookie stays first-party. Because the API keeps no state of its own, the host can run two or more instances and add more under load.
+[`render.yaml`](render.yaml) describes the demo setup as a Render Blueprint:
+
+- **Website:** a static site on Render's CDN. It never sleeps, and it forwards `/api` to the API, so the browser talks to one origin and the login cookie stays first-party.
+- **API:** the backend Docker image in Singapore (close to Bengaluru), with the `postgres` profile. Render generates `JWT_SECRET` itself.
+- **Database:** PostgreSQL on Neon, also in Singapore.
+
+The demo uses free plans, so the API goes to sleep after 15 minutes without visitors, and the first request after that waits up to a minute while it starts. The site says so while it waits instead of showing a bare spinner. The Docker image is built with a class-data-sharing archive, which makes startup about a third faster.
+
+For a real clinic you'd use paid plans instead: an always-on API with two or more instances, and a database plan with point-in-time restore. The code doesn't change; the API keeps no state of its own, so the host can add instances under load.
 
 ---
 

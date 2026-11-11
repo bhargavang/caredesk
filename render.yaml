@@ -1,0 +1,97 @@
+# Render Blueprint for the live demo: the API as a Docker web service in Singapore, and the
+# website as a static site on Render's CDN that forwards /api to it (so the browser only ever
+# talks to one origin and the login cookie stays first-party).
+# The database is Neon (free Postgres). Render asks for DATABASE_URL when the Blueprint is
+# first created: paste the connection string from the Neon dashboard as it is.
+services:
+  - type: web
+    name: caredesk-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /actuator/health/readiness
+    buildFilter:
+      paths:
+        - backend/**
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: postgres
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      # The free instance has 512 MB; a small pool is plenty for one instance.
+      - key: DB_POOL_SIZE
+        value: "5"
+      # Requests arrive through the static site's rewrite, so the API sees that origin.
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://caredesk-demo.onrender.com
+      # Public demo: visitors log in as front desk, so they can't edit services or staff,
+      # and the appointments are regenerated around today every night.
+      - key: DEMO_ROLE
+        value: STAFF
+      - key: DEMO_DAILY_RESET
+        value: "true"
+      - key: MAIL_MODE
+        value: log
+      - key: CLIENT_IP_DEBUG
+        value: "true"
+
+  - type: web
+    name: caredesk-demo
+    runtime: static
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: ./frontend/dist
+    buildFilter:
+      paths:
+        - frontend/**
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: SITE_URL
+        value: https://caredesk-demo.onrender.com
+      # Bakes the services list into the prerendered home page (waits for a sleeping API to wake).
+      - key: PRERENDER_API_URL
+        value: https://caredesk-api.onrender.com
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://caredesk-api.onrender.com/api/*
+      - type: rewrite
+        source: /swagger-ui/*
+        destination: https://caredesk-api.onrender.com/swagger-ui/*
+      - type: rewrite
+        source: /v3/api-docs/*
+        destination: https://caredesk-api.onrender.com/v3/api-docs/*
+      - type: rewrite
+        source: /v3/api-docs
+        destination: https://caredesk-api.onrender.com/v3/api-docs
+      # Every other path that isn't a file gets the app shell (the home page is index.html).
+      - type: rewrite
+        source: /*
+        destination: /app.html
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(), microphone=(), geolocation=(), payment=()
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000; includeSubDomains
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+      # Build files have content hashes in their names, so they never change.
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
