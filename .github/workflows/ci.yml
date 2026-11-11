@@ -108,22 +108,7 @@ jobs:
           done
           echo "API did not come up"; exit 1
       - name: Book a slot and log in against Postgres
-        run: |
-          set -euo pipefail
-          service=$(curl -fsS http://localhost:8081/api/public/services | jq '.[0].id')
-          for i in $(seq 1 14); do
-            day=$(date -u -d "+$i day" +%F)
-            slot=$(curl -fsS "http://localhost:8081/api/public/slots?serviceId=$service&date=$day" | jq -c '.[0] // empty')
-            [ -n "$slot" ] && break
-          done
-          body=$(jq -nc --argjson s "$slot" --argjson svc "$service" \
-            '{serviceId: $svc, staffId: $s.staffId, start: $s.start, customerName: "CI Check", customerEmail: "ci@example.com"}')
-          curl -fsS -X POST http://localhost:8081/api/public/appointments -H 'Content-Type: application/json' -d "$body" | jq -e '.reference'
-          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8081/api/public/appointments -H 'Content-Type: application/json' -d "$body")
-          test "$code" = "409"
-          curl -fsS -X POST http://localhost:8081/api/auth/login -H 'Content-Type: application/json' \
-            -d '{"email":"demo@caredesk.test","password":"demo1234"}' | jq -e '.user.roles[0] == "ADMIN"'
-          curl -fsS http://localhost:8081/ | grep -q 'What do you need?'
+        run: bash scripts/smoke-test.sh http://localhost:8081
       - name: Logs
         if: always()
         run: docker compose logs --no-color --tail 200 backend
