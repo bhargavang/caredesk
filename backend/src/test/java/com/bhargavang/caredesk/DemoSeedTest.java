@@ -9,8 +9,11 @@ import com.bhargavang.caredesk.booking.AppointmentRepository;
 import com.bhargavang.caredesk.booking.SlotService;
 import com.bhargavang.caredesk.catalog.ServiceOfferingRepository;
 import com.bhargavang.caredesk.catalog.StaffRepository;
+import com.bhargavang.caredesk.seed.DemoDataSeeder;
 import com.bhargavang.caredesk.support.IntegrationTest;
+import com.bhargavang.caredesk.support.TestData;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -36,6 +39,17 @@ class DemoSeedTest {
 	SlotService slots;
 	@Autowired
 	JdbcTemplate jdbc;
+	@Autowired
+	DemoDataSeeder seeder;
+	@Autowired
+	TestData data;
+
+	/** Start from an empty database every time, even when other tests shared it (CI runs these on Postgres). */
+	@BeforeEach
+	void seedFresh() {
+		data.wipe();
+		seeder.run(null);
+	}
 
 	@Test
 	void seedsAClinicWithAMonthOfAppointmentsAroundToday() {

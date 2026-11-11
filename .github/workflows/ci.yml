@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests (Java 21)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Run tests
+        run: ./mvnw -B verify
+      - name: Keep test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: surefire-reports
+          path: backend/target/surefire-reports
+
+  backend-postgres:
+    name: Backend tests on PostgreSQL
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: caredesk_test
+          POSTGRES_USER: caredesk
+          POSTGRES_PASSWORD: caredesk
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U caredesk -d caredesk_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      # Overrides the in-memory H2 database from the test profile, so the double-booking
+      # and concurrency tests also run against the database used in production.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/caredesk_test
+      SPRING_DATASOURCE_USERNAME: caredesk
+      SPRING_DATASOURCE_PASSWORD: caredesk
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Run tests
+        run: ./mvnw -B test
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Check the home page was prerendered
+        run: grep -q 'What do you need?' dist/index.html
+
+  compose:
+    name: Docker Compose smoke test
+    needs: [backend, backend-postgres, frontend]
+    runs-on: ubuntu-latest
+    env:
+      JWT_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
+      POSTGRES_PASSWORD: ci-only-password
+    steps:
+      - uses: actions/checkout@v7
+      - name: Start Postgres, API and website
+        run: docker compose up -d --build
+      - name: Wait for the API through nginx
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8081/api/public/services > /dev/null; then echo "API is up"; exit 0; fi
+            sleep 3
+          done
+          echo "API did not come up"; exit 1
+      - name: Book a slot and log in against Postgres
+        run: |
+          set -euo pipefail
+          service=$(curl -fsS http://localhost:8081/api/public/services | jq '.[0].id')
+          for i in $(seq 1 14); do
+            day=$(date -u -d "+$i day" +%F)
+            slot=$(curl -fsS "http://localhost:8081/api/public/slots?serviceId=$service&date=$day" | jq -c '.[0] // empty')
+            [ -n "$slot" ] && break
+          done
+          body=$(jq -nc --argjson s "$slot" --argjson svc "$service" \
+            '{serviceId: $svc, staffId: $s.staffId, start: $s.start, customerName: "CI Check", customerEmail: "ci@example.com"}')
+          curl -fsS -X POST http://localhost:8081/api/public/appointments -H 'Content-Type: application/json' -d "$body" | jq -e '.reference'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8081/api/public/appointments -H 'Content-Type: application/json' -d "$body")
+          test "$code" = "409"
+          curl -fsS -X POST http://localhost:8081/api/auth/login -H 'Content-Type: application/json' \
+            -d '{"email":"demo@caredesk.test","password":"demo1234"}' | jq -e '.user.roles[0] == "ADMIN"'
+          curl -fsS http://localhost:8081/ | grep -q 'What do you need?'
+      - name: Logs
+        if: always()
+        run: docker compose logs --no-color --tail 200 backend
+      - name: Stop
+        if: always()
+        run: docker compose down -v
