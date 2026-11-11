@@ -26,10 +26,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class RateLimitFilter extends OncePerRequestFilter {
 
 	private final RateLimiter limiter;
+	private final ClientIpResolver clientIp;
 	private final CareDeskProperties.RateLimit limits;
 
-	public RateLimitFilter(RateLimiter limiter, CareDeskProperties properties) {
+	public RateLimitFilter(RateLimiter limiter, ClientIpResolver clientIp, CareDeskProperties properties) {
 		this.limiter = limiter;
+		this.clientIp = clientIp;
 		this.limits = properties.rateLimit();
 	}
 
@@ -38,7 +40,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 			throws ServletException, IOException {
 		Rule rule = limits.enabled() ? ruleFor(request) : null;
 		if (rule != null) {
-			long retryAfter = limiter.tryAcquire(rule.name() + ":" + request.getRemoteAddr(), rule.limit(), rule.window());
+			long retryAfter = limiter.tryAcquire(rule.name() + ":" + clientIp.resolve(request), rule.limit(), rule.window());
 			if (retryAfter > 0) {
 				response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
 				response.setHeader(HttpHeaders.RETRY_AFTER, String.valueOf(retryAfter));

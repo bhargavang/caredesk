@@ -27,9 +27,8 @@ spring:
 server:
   port: ${PORT:8080}
   shutdown: graceful
-  # Set to "framework" only when running behind a proxy you trust (Render, Railway, nginx),
-  # so rate limits see the real client IP from X-Forwarded-For.
-  forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
+  # Rate limits find the client IP through caredesk.client-ip below, not through this setting.
+  forward-headers-strategy: none
   error:
     include-message: never
     include-stacktrace: never
@@ -92,6 +91,13 @@ caredesk:
     booking-window: PT1H
     lookups: 120
     lookup-window: PT10M
+  client-ip:
+    # 0: the connecting address (nothing in front). 1: the last X-Forwarded-For entry, added by
+    # the one proxy you run (nginx in docker-compose). Count every proxy that appends to the header.
+    trusted-hops: ${CLIENT_IP_TRUSTED_HOPS:0}
+    # Or a header your edge overwrites on every request, such as CF-Connecting-IP.
+    header: ${CLIENT_IP_HEADER:}
+    debug: ${CLIENT_IP_DEBUG:false}
   seed:
     enabled: ${SEED_DEMO_DATA:true}
     demo-email: demo@caredesk.test

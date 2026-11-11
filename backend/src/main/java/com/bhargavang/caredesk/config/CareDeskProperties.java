@@ -17,6 +17,7 @@ public record CareDeskProperties(
 		Cors cors,
 		Mail mail,
 		RateLimit rateLimit,
+		ClientIp clientIp,
 		Seed seed) {
 
 	public record Clinic(String name, String address, String phone, ZoneId timezone) {
@@ -52,6 +53,20 @@ public record CareDeskProperties(
 	 */
 	public record RateLimit(boolean enabled, int loginAttempts, Duration loginWindow, int bookings,
 			Duration bookingWindow, int lookups, Duration lookupWindow, int failedLoginsPerAccount) {
+	}
+
+	/**
+	 * How the visitor's IP is found for rate limits.
+	 *
+	 * @param trustedHops how many proxies in front of the app append to X-Forwarded-For. 0 uses the
+	 *                    connecting address; 1 uses the last entry, written by the one proxy you control.
+	 *                    Entries further left are whatever the client sent, so they are never trusted.
+	 * @param header      a header your edge sets and overwrites itself (for example CF-Connecting-IP);
+	 *                    when present it wins over X-Forwarded-For
+	 * @param debug       expose GET /api/public/client-ip, which echoes what the proxy sent, so you can
+	 *                    pick the right setting for a new host. Leave it off otherwise.
+	 */
+	public record ClientIp(int trustedHops, String header, boolean debug) {
 	}
 
 	public record Seed(boolean enabled, String demoEmail, String demoPassword) {

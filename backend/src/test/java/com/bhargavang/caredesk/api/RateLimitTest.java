@@ -65,6 +65,16 @@ class RateLimitTest {
 	}
 
 	@Test
+	void aMadeUpForwardedForHeaderDoesNotGetAroundTheLimit() throws Exception {
+		for (int i = 0; i < 3; i++) {
+			mvc.perform(login("10.0.4.1", "user" + i + "@clinic.test", "wrong").header("X-Forwarded-For", "192.0.2." + i))
+					.andExpect(status().isUnauthorized());
+		}
+		mvc.perform(login("10.0.4.1", "user9@clinic.test", "wrong").header("X-Forwarded-For", "192.0.2.77"))
+				.andExpect(status().isTooManyRequests());
+	}
+
+	@Test
 	void bookingsAreLimitedPerIp() throws Exception {
 		for (int i = 0; i < 2; i++) {
 			mvc.perform(booking("10.0.2.1")).andExpect(status().isBadRequest());

@@ -24,7 +24,8 @@ services:
       DATABASE_USERNAME: caredesk
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-caredesk}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env (at least 32 characters)}
-      FORWARD_HEADERS_STRATEGY: framework
+      # nginx (the frontend container) overwrites X-Forwarded-For with the client's address.
+      CLIENT_IP_TRUSTED_HOPS: 1
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
       DEMO_PASSWORD: ${DEMO_PASSWORD:-demo1234}
