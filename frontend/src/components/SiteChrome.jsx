@@ -5,8 +5,8 @@ export function DemoBanner() {
   return (
     <div className="demo-banner" role="note">
       <span>
-        <strong>Portfolio demo.</strong> Juniper Family Clinic is made up. Bookings live in a demo database and
-        emails are written to the server log, not sent.
+        <strong>Portfolio demo.</strong> Juniper Family Clinic is made up. Bookings go into a demo database that's
+        reset every night, and emails are written to the server log, not sent.
       </span>
     </div>
   )

@@ -10,22 +10,62 @@ export class ApiError extends Error {
   }
 }
 
-async function request(path, { method = 'GET', body, staff = false } = {}) {
+// The hosted demo's API sleeps when idle and takes up to a minute to wake. Requests that run
+// longer than this are reported to the "waking up" notice, and reads are retried meanwhile.
+const SLOW_AFTER_MS = 3500
+const RETRY_FOR_MS = 90_000
+const RETRYABLE = new Set([502, 503, 504])
+
+let slowRequests = 0
+const slowListeners = new Set()
+function setSlow(delta) {
+  slowRequests += delta
+  slowListeners.forEach((listener) => listener(slowRequests > 0))
+}
+
+/** Calls back with true while any request is taking unusually long. Returns an unsubscribe function. */
+export function onSlowServer(listener) {
+  slowListeners.add(listener)
+  return () => slowListeners.delete(listener)
+}
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function request(path, { method = 'GET', body, staff = false, quiet = false } = {}) {
   const headers = { Accept: 'application/json' }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   // The server only accepts the session cookie on writes that carry this header,
   // which other websites can't add. That's the CSRF guard.
   if (staff) headers['X-CareDesk-Client'] = 'web'
 
+  let slow = false
+  const timer = quiet ? null : setTimeout(() => { slow = true; setSlow(1) }, SLOW_AFTER_MS)
+  const started = Date.now()
   let res
   try {
-    res = await fetch(BASE + path, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-      credentials: 'same-origin',
-    })
-  } catch {
+    // Only reads are retried: repeating a booking or login could do it twice.
+    for (let attempt = 1; ; attempt++) {
+      let failed = false
+      try {
+        res = await fetch(BASE + path, {
+          method,
+          headers,
+          body: body === undefined ? undefined : JSON.stringify(body),
+          credentials: 'same-origin',
+        })
+        failed = RETRYABLE.has(res.status)
+      } catch {
+        failed = true
+        res = null
+      }
+      if (!failed || method !== 'GET' || Date.now() - started > RETRY_FOR_MS) break
+      await wait(Math.min(1500 * attempt, 6000))
+    }
+  } finally {
+    clearTimeout(timer)
+    if (slow) setSlow(-1)
+  }
+  if (!res) {
     throw new ApiError(0, { detail: "Can't reach the server. Check your connection and try again." })
   }
   if (res.status === 204) return null
@@ -38,6 +78,8 @@ const q = (params) =>
   new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')).toString()
 
 export const api = {
+  /** Starts waking a sleeping server in the background, without showing the notice. */
+  warmUp: () => request('/api/public/clinic', { quiet: true }).catch(() => {}),
   clinic: () => request('/api/public/clinic'),
   services: () => request('/api/public/services'),
   staff: () => request('/api/public/staff'),

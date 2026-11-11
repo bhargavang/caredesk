@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { api } from '../api.js'
 import { LogoMark } from '../components/Brand.jsx'
@@ -13,6 +13,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
+
+  // Wake a sleeping API while the person types, so the login itself isn't the slow request.
+  useEffect(() => { api.warmUp() }, [])
 
   async function submit(e) {
     e.preventDefault()

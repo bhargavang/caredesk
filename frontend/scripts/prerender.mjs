@@ -2,7 +2,7 @@
 //  - dist/index.html: the public booking page rendered to real HTML (good for SEO and first paint)
 //  - dist/app.html:   an empty shell for staff pages, which search engines shouldn't index
 // If PRERENDER_API_URL points at a running API, the services list is baked into the HTML too.
-// SITE_URL (for example https://caredesk-demo.vercel.app) fills canonical/Open Graph URLs and the sitemap.
+// SITE_URL (for example https://caredesk-demo.onrender.com) fills canonical/Open Graph URLs and the sitemap.
 import { readFile, writeFile, rm } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -19,7 +19,8 @@ async function loadData() {
   if (!apiUrl) return null
   try {
     const get = async (p) => {
-      const res = await fetch(apiUrl + p, { signal: AbortSignal.timeout(8000) })
+      // A free-plan API may be asleep; give it time to wake before giving up.
+      const res = await fetch(apiUrl + p, { signal: AbortSignal.timeout(90_000) })
       if (!res.ok) throw new Error(`${p} -> ${res.status}`)
       return res.json()
     }

@@ -34,7 +34,9 @@ export default function BookingPage({ initialData }) {
   const doneRef = useRef(null)
 
   useEffect(() => {
-    if (clinic && services && staff) return
+    // Prerendered data means no request is needed yet, so wake the API now rather than when
+    // someone picks a service.
+    if (clinic && services && staff) { if (initialData) api.warmUp(); return }
     Promise.all([api.clinic(), api.services(), api.staff()])
       .then(([c, s, p]) => { setClinic(c); setServices(s); setStaff(p) })
       .catch((e) => setLoadError(e.message))
